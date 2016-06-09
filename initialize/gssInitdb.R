@@ -1,6 +1,8 @@
 library(mfdb)
 library(fjolst)
 library(fjolstTranslate)
+library(Logbooks)
+library(LogbooksTranslate)
 library(geo)
 library(dplyr)
 library(data.table)
@@ -10,15 +12,16 @@ setwd('/home/pfrater/gadget/grSilverSmelt')
 # Create connection to MFDB database, as the Icelandic case study
 mdb <- mfdb('Iceland')
 
-species.key <- data.table(species.code = 19, species = 'GSS')
+species.key <- data.frame(species.code = 19, species = 'GSS')
 mapping <- read.table('data/mapping.txt', header=T)
+mapping <- rename(mapping, gear.type.iceland = veidarfaeri, gear.type.mfdb = gear)
 
 mapping <-
-    mutate(merge(mapping, gear, by.x='gear',
+    mutate(merge(mapping, gear, by.x='gear.type.mfdb',
                  by.y = 'id'),
-           gear=NULL,
+           gear.type.mfdb=NULL,
            description=NULL)
-names(mapping)[2] <- 'gear'
+mapping <- rename(mapping, gear.type = gear.type.iceland, gear = name)
 mapping$gear <- as.character(mapping$gear)
 
 

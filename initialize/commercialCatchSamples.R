@@ -2,42 +2,33 @@
 # commercial catch samples
 ##########################
 stations <-
-    data.table(subset(stodvar,
-                      synaflokkur %in% c(1,8),
-                      select = c(synis.id,ar,man,lat,lon,veidarfaeri))) %>%
+    data.table(subset(translate.stodvar(),
+                      sampling.type %in% c(1,8),
+                      select = c(sample.id,year,month,lat,lon,gear.type))) %>%
     left_join(data.table(mapping)) %>%
-    group_by(synis.id) %>%
+    group_by(sample.id) %>%
     mutate(areacell = d2sr(lat,lon),
-           veidarfaeri = NULL) %>%
+           gear.type = NULL) %>%
     filter(areacell %in% reitmapping$GRIDCELL &
                !is.na(gear))
 
 
 # import length distribution from commercial catch samples
-ldist <- data.table(all.le) %>%
-    filter(synis.id %in% stations$synis.id &
-               tegund %in% species.key$tegund) %>%
-    group_by(synis.id,tegund) %>%
+ldist <- translate.all.le() %>%
+    filter(sample.id %in% stations$sample.id &
+               species.code %in% species.key$species.code) %>%
+    group_by(sample.id,species.code) %>%
     left_join(stations) %>%
     left_join(species.key) %>%
-    left_join(data.table(all.nu)) %>%
-    mutate(count=fjoldi,
-           sex = c('M','F')[pmax(1,kyn)],
+    left_join(translate.all.nu()) %>%
+    mutate(sex = c('M','F')[pmax(1,sex)],
            age = 0,
-           month = man,
            sampling_type = 'SEA',
-           maturity_stage = pmax(1,pmin(kynthroski,2))) %>%
+           maturity_stage = pmax(1,pmin(maturity,2))) %>%
     filter(!is.na(areacell)) %>%
-    ungroup() %>%
-    mutate(man = NULL,
-           fjoldi = NULL,
-           kyn = NULL,
-           kynthroski=NULL,
-           tegund = NULL) 
+    ungroup()
 
-setnames(ldist,
-         c('synis.id','ar','lengd'),
-         c('sample.id','year','length'))
+ldist <- data.table(ldist)
 
 mfdb_import_survey(mdb,
                    data_source = 'iceland-ldist.comm',
@@ -48,31 +39,20 @@ rm(ldist)
 
 # import age-length frequencies for commercial catch samples
 aldist <-
-    data.table(all.kv) %>%
-    filter(synis.id %in% stations$synis.id &
-               tegund %in% species.key$tegund) %>%
-    group_by(synis.id,tegund) %>%
-    left_join(data.table(stations)) %>%
+    translate.all.kv() %>%
+    filter(sample.id %in% stations$sample.id &
+               species.code %in% species.key$species.code) %>%
+    group_by(sample.id,species.code) %>%
+    left_join(stations) %>%
     left_join(species.key) %>%
     mutate(count=1,           
-           sex = c('M','F')[pmax(1,kyn)],
-           age = aldur,
+           sex = c('M','F')[pmax(1,sex)],
            sampling_type = 'SEA',
-           month = man,
-           maturity_stage = pmax(1,pmin(kynthroski,2))) %>%
+           maturity_stage = pmax(1,pmin(maturity,2))) %>%
     filter(!is.na(areacell)) %>%
-    ungroup() %>%
-    mutate(man = NULL,
-           kyn = NULL,
-           kynthroski=NULL,
-           tegund = NULL,
-           aldur=NULL)
+    ungroup()
 
-setnames(aldist,
-         c('synis.id','ar','lengd', 'nr',
-           'oslaegt', 'slaegt', 'lifur','kynfaeri'),
-         c('sample.id','year','length','no',
-           'weight','gutted','liver', 'gonad'))
+aldist <- data.table(aldist)
 
 mfdb_import_survey(mdb,
                    data_source = 'iceland-aldist.comm',

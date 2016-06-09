@@ -1,23 +1,20 @@
-### working with Logbooks data
+### working with fjolst trawl data in stodvar dataset
 ### to determine where greater silver smelt were harvested from 1982 - 2016
-library(fjolst)
-library(fjolstTranslate)
-library(dplyr)
-library(ggplot2)
+
 
 # obtain the stations and lengths data sets from fjolst
 # and subset to greater silver smelt only
 stations <- translate.stodvar()
-gss.le <- translate.all.le() %>% filter(species==19)
-gss.kv <- translate.all.kv() %>% filter(species==19)
-gss.nu <- translate.all.nu() %>% filter(species==19)
+gss.le <- translate.all.le() %>% filter(species.code==19)
+gss.kv <- translate.all.kv() %>% filter(species.code==19)
+gss.nu <- translate.all.nu() %>% filter(species.code==19)
 
 # using the length data set (all.le) to obtain what proportion of fish were caught where
 gss <- gss.nu %>% 
         filter(fishing.gear != 30 | fishing.gear != 35) %>%
         left_join(gss.le) %>% 
         left_join(stations) %>%
-        select(sample.id, year, fishing.gear, species, count.considered, 
+        select(sample.id, year, fishing.gear, species.code, count.considered, 
                count.recommended, catch, station.wt, length, count, trawl.number,
                month, day, net.cast.time, net.pull.time, ship, station,
                net.cast.lat, net.cast.long, net.pull.lat, net.pull.long,
@@ -38,39 +35,30 @@ gss <- gss.nu %>%
 #                )
 #trawl.lines # uncomment this out to see, takes a few seconds to plot
 
-# read in gridcell data and compute lat/longs
-reitmapping <- read.table(
-    system.file("demo-data", "reitmapping.tsv", package="mfdb"),
-    header=TRUE,
-    as.is=TRUE) %>%
-    mutate(
-        lat = geo::sr2d(GRIDCELL)$lat,
-        lon = geo::sr2d(GRIDCELL)$lon
-    )
-
-gridcells <- reitmapping %>% 
-            filter(!is.na(lat)) %>%
-            group_by(GRIDCELL) %>% 
-            arrange(GRIDCELL) %>%
-            mutate(lat.south = lat - .125,
-                   lat.north = lat + 0.125,
-                   lon.west = lon - 0.25,
-                   lon.east = lon + 0.25
-                   )
-
-# calculate the proportion of trawls performed in each area (gridcell or division)
-trawls <- gss %>% 
-                select(sample.id, year, fishing.gear, species,
+# calculate the proportion of fishing performed in each area (gridcell or division)
+# for gear types other than bottom trawl
+ogt.catch <- gss %>% 
+                filter(fishing.gear != 6) %>% 
+                select(sample.id, year, fishing.gear, species.code,
                        catch, month, day, ship, lat, lon) %>%
                 group_by(sample.id) %>%
                 filter(row_number(sample.id) == 1) %>%
-                mutate(gridcell = d2sr(lat=lat, lon=lon))
+                mutate(gridcell = d2sr(lat=lat, lon=lon)) %>%
+                rename(gear.type = fishing.gear) %>%
+                filter(gear.type %in% other.gt) #from gssLandedCatchSeaSamplingProps.R
                 
-trawl.prop <- trawls %>%
-                group_by(year, fishing.gear, gridcell) %>%
-                summarize(n=n()) %>%
-                mutate(prop = n / sum(n))
+ogt.catch.prop <- ogt.catch %>%
+                filter(!is.na(gridcell)) %>%
+                group_by(year, gear.type, gridcell) %>%
+                summarize(n = n()) %>%
+                mutate(prop = n / sum(n)) %>%
+                filter(year > 1980)
 
+ogt.prop.ann <- ogt.catch %>%
+                group_by(year, gridcell) %>%
+                summarize(n = n()) %>%
+                mutate(prop = n / sum(n)) %>%
+                filter(year > 1980)
 
 
 

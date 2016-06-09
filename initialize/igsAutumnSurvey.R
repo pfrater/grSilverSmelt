@@ -3,44 +3,37 @@
 ##########################
 
 stations <-
-    data.table(subset(stodvar, synaflokkur == 35, ## autumn survey 30
-                      select = c(synis.id,ar,man,lat,lon,veidarfaeri))) %>%
-    left_join(data.table(mapping)) %>%
-    group_by(synis.id) %>%
-    setnames(old="ar",new="year") %>%
-    mutate(month = 3,
+    subset(translate.stodvar(), sampling.type == 35, ## autumn survey 30
+                      select = c(sample.id,year,month,lat,lon,gear.type)) %>%
+    left_join(mapping) %>%
+    group_by(sample.id) %>%
+    mutate(month = 10,
            areacell = d2sr(lat,lon),
            sampling_type = 'IGFS') %>%
     filter(!is.na(areacell))
 
 # Import length distribution from autumn survey
-ldist <- data.table(all.le) %>%
-    filter(synis.id %in% stations$synis.id &
-               tegund %in% species.key$tegund) %>%
-    group_by(synis.id,tegund) %>%
+ldist <- translate.all.le() %>%
+    filter(sample.id %in% stations$sample.id &
+               species.code %in% species.key$species.code) %>%
+    group_by(sample.id,species.code) %>%
     left_join(stations) %>%
     left_join(species.key) %>%
-    left_join(data.table(all.nu)) %>%
-    mutate(count=round(fjoldi*pmax(fj.talid+fj.maelt,1,na.rm=TRUE)/
-                           pmax(1,fj.maelt,na.rm=TRUE)),
-           sex = c('M','F')[pmax(1,kyn)],
+    left_join(translate.all.nu()) %>%
+    mutate(count=round(count*pmax(count.considered+count.recommended,1,na.rm=TRUE)/
+                           pmax(1,count.recommended,na.rm=TRUE)),
+           sex = c('M','F')[pmax(1,sex)],
            age = 0,
-           maturity_stage = pmax(1,pmin(kynthroski,2))) %>%
+           maturity_stage = pmax(1,pmin(maturity,2))) %>%
     ungroup() %>%
-    mutate(man = NULL,
-           fjoldi = NULL,
-           kyn = NULL,
-           kynthroski=NULL,
-           fj.maelt = NULL,
-           fj.talid = NULL,
-           afli=NULL,
-           vigt.synis = NULL,
-           tegund = NULL,
-           veidarfaeri = NULL)           
+    mutate(count.recommended = NULL,
+           count.considered = NULL,
+           catch=NULL,
+           station.wt = NULL,
+           species.code = NULL,
+           gear.type = NULL)
 
-setnames(ldist,
-         c('synis.id','lengd'),
-         c('sample.id','length'))
+ldist <- data.table(ldist)
 
 mfdb_import_survey(mdb,
                    data_source = 'iceland-ldist.igfs',
@@ -48,33 +41,25 @@ mfdb_import_survey(mdb,
 rm(ldist)
 
 # import age-length frequencies from the autumn survey
-aldist <- data.table(all.kv) %>%
-    filter(synis.id %in% stations$synis.id &
-               tegund %in% species.key$tegund) %>%
-    group_by(synis.id,tegund) %>%
+aldist <- translate.all.kv() %>%
+    filter(sample.id %in% stations$sample.id &
+               species.code %in% species.key$species.code) %>%
+    group_by(sample.id, species.code) %>%
     left_join(stations) %>%
     left_join(species.key) %>%
     mutate(count=1,
            areacell = d2sr(lat,lon),
-           sex = c('M','F')[pmax(1,kyn)],
-           age = aldur,
+           sex = c('M','F')[pmax(1,sex)],
            sampling_type = 'IGFS',
-           month = 3,
-           maturity_stage = pmax(1,pmin(kynthroski,2))) %>%
+           month = 10,
+           maturity_stage = pmax(1,pmin(maturity,2))) %>%
     filter(!is.na(areacell)) %>%
     ungroup() %>%
-    mutate(man = NULL,
-           kyn = NULL,
-           kynthroski=NULL,
-           tegund = NULL,
-           veidarfaeri = NULL,
-           aldur=NULL)           
+    mutate(maturity=NULL,
+           species.code = NULL,
+           gear.type = NULL)
 
-setnames(aldist,
-         c('synis.id','lengd', 'nr',
-           'oslaegt', 'slaegt', 'lifur','kynfaeri'),
-         c('sample.id','length','no',
-           'weight','gutted','liver', 'gonad'))
+aldist <- data.table(aldist)
 
 mfdb_import_survey(mdb,
                    data_source = 'iceland-aldist.igfs',
