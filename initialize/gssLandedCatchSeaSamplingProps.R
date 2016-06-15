@@ -6,7 +6,6 @@
 
 # necessary datasets landedcatch and gridcell.mapping should be present
 
-# obtain gear types other than bottom trawl used to catch gss
 other.gt <- unique(filter(landedcatch, gear.type != 6)$gear.type)
 
 ##############################################################
@@ -18,64 +17,85 @@ source('initialize/computeAreasSeaSampling.R') # bring in calculations on propor
 # merge landedcatch and trawl.prop and assign the landedcatch to
 # appropriate gridcells based on fishing effort there
 
-# the best I can do with this method is group 
-# fishing effort to gridcell by year (month and gear.type don't align with landedcatch)
-other.catch.prop <- landedcatch %>%
-    filter(gear.type != 6) %>%
-    group_by(year, gear.type) %>%
-    summarize(catch = sum(catch)) %>%
-    left_join(ogt.catch.prop)
+# bottom.trawls makeup 96% of catch, and pelagic trawls make up 98% of the additional 
+# 4%, so calculating for pgt
+pgt.ann.catch <- landedcatch %>%
+    filter(gear.type == 7 | gear.type == 21) %>%
+    group_by(year) %>%
+    summarize(catch = sum(catch)) 
 
-# this is kinda messy
-# it assigns a gridcell to prop.catch with NA values for gridcell
-# for landedcatch values under 1000, it assigns a gridcell based on weighted probability
-# for landedcatch values > 1000 it splits out catch into various gridcells
-big.catches <- NULL;
-for (i in 1:nrow(other.catch.prop)) {
-    if (is.na(other.catch.prop$gridcell[i])) {
-        grid.years <- ogt.prop.ann %>%
-            filter(year == other.catch.prop$year[i]);
-        if (other.catch.prop$catch[i] < 1000) {
-            grid.prob <- sample(grid.years$gridcell, 1, prob=grid.years$prop);
-            other.catch.prop$gridcell[i] <- grid.prob;
-        }
-        else {
-            big.catch <- 
-                select(other.catch.prop[i,], year, gear.type, catch) %>%
-                left_join(grid.years) %>%
-                mutate(catch = catch * prop) %>%
-                select(year, gear.type, catch, gridcell)
-            big.catches <- rbind(big.catches, big.catch);
-        }
+pgt.monthly.catch.prop <- pgt.ann.catch %>%
+    left_join(pgt.monthly.prop)
+
+for (i in 1:nrow(pgt.monthly.catch.prop)) {
+    if (is.na(pgt.monthly.catch.prop$month[i])) {
+        pgt.monthly.catch.prop$month[i] <- sample(pgt.month.prob$month, 1, prob=pgt.month.prob$prop)
+        pgt.monthly.catch.prop$prop[i] <- 1
     }
 }
 
-other.catch.props <- 
-    other.catch.prop %>%
-    filter(!is.na(gridcell)) %>%
-    full_join(big.catches) %>%
-    filter(!is.na(gridcell)) %>%
-    arrange(year, gear.type) %>%
-    mutate(catch.prop=ifelse(!is.na(prop),
-                             catch * prop,
-                             catch))
-    
+pgt.monthly.catch <- pgt.monthly.catch.prop %>%
+    mutate(prop.catch = prop * catch) %>%
+    select(year, month, prop.catch) %>%
+    rename(catch = prop.catch)
 
-# fix up landings data for import into mfdb
-other.landings <- other.catch.props %>%
+pgt.catch.prop <- pgt.monthly.catch %>%
+    left_join(pgt.catch.props)
+
+# for monthly landings with gridcells missing
+# randomly assigns a gridcell based on weighted probability 
+# of reported sea samples for pelagic trawls
+for (i in 1:nrow(pgt.catch.prop)) {
+    if (is.na(pgt.catch.prop$gridcell[i])) {
+        pgt.catch.prop$gridcell[i] <- sample(pgt.gridcell.probs$gridcell, 1, 
+                                             prob=pgt.gridcell.probs$prop)
+        pgt.catch.prop$prop[i] <- 1
+    }
+}
+
+pgt.landings <- pgt.catch.prop %>%
+    mutate(prop.catch = catch * prop) %>%
+    select(year, month, gridcell, prop.catch) %>%
+    rename(catch = prop.catch,
+           areacell = gridcell) %>%
+    mutate(gear = 'PGT',
+           species = 'GSS',
+           sampling_type = 'LND')
+
+
+# randomly assign a gridcell to other gear.types based on weighted probability
+other.catch <- landedcatch %>%
+    filter(gear.type %in% other.gt)
+
+other.catch$gridcell <- NA
+for (i in 1:nrow(other.catch)) {
+    temp.grid <- filter(other.gt.catch.props, gear.type == other.catch$gear.type[i]);
+    if (nrow(temp.grid)==0) {
+        other.catch$gridcell[i] <- sample(gridcell.probs$gridcell, 1,
+                                       prob=gridcell.probs$prop)
+    }
+    else if (nrow(temp.grid) == 1) {
+        other.catch$gridcell[i] <- temp.grid$gridcell;
+    } 
+    else { 
+        other.catch$gridcell[i] <- sample(temp.grid$gridcell, 1, prob=temp.grid$prop);
+    }
+}
+
+other.landings <- other.catch %>%
     left_join(mapping) %>%
-    mutate(sampling_type='LND') %>%
+    mutate(species = 'GSS',
+           sampling_type = 'LND') %>%
     rename(areacell = gridcell) %>%
-    select(year, areacell, sampling_type, gear, catch.prop) %>%
-    rename(catch = catch.prop)
-other.landings$species <- species.key$species
+    select(year, month, areacell, sampling_type, gear, catch, species)
 
 
 # vaska upp
-rm(list=c('big.catch', 'big.catches', 'grid.years', 'gss', 'gss.kv', 
-          'gss.le', 'gss.nu', 'ogt.catch', 'ogt.catch.prop', 
-          'other.catch.props', 'grid.prob', 'i', 'other.gt',
-          'ogt.prop.ann'))
+rm(list=c('pgt.ann.catch', 'pgt.monthly.catch.prop', 'pgt.monthly.catch',
+          'pgt.catch.prop', 'other.catch', 'temp.grid', 'i', 'stations', 
+          'gss', 'gss.kv', 'gss.le', 'gss.nu', 'ogt.catch', 'pgt.monthly.prop',
+          'pgt.month.prob', 'pgt.catch.props', 'pgt.gridcell.probs', 
+          'other.gt', 'other.gt.catch.props', 'gridcell.probs', 'ogt'))
 
 
 

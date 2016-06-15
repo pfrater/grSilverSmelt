@@ -47,22 +47,58 @@ ogt.catch <- gss %>%
                 rename(gear.type = fishing.gear) %>%
                 filter(gear.type %in% other.gt) #from gssLandedCatchSeaSamplingProps.R
                 
-ogt.catch.prop <- ogt.catch %>%
+# calculate the proportion of fishing per month for merging purposes
+pgt.monthly.prop <- ogt.catch %>%
                 filter(!is.na(gridcell)) %>%
-                group_by(year, gear.type, gridcell) %>%
+                filter(gear.type == 7 | gear.type == 21) %>%
+                group_by(year, month) %>%
+                summarize(n = n()) %>%
+                mutate(prop =  n / sum(n)) %>%
+                select(year, month, prop)
+
+# calculate the proportions of each month fished for weighted probabilities later
+pgt.month.prob <- ogt.catch %>%
+                filter(!is.na(gridcell)) %>%
+                filter(gear.type == 7 | gear.type == 21) %>%
+                group_by(month) %>% 
+                summarize(n = n()) %>%
+                mutate(prop = n / sum(n))
+
+# calculate the proportion of fishing per year, month, and gridcell
+pgt.catch.props <- ogt.catch %>%
+                filter(!is.na(gridcell)) %>%
+                filter(gear.type == 7 | gear.type == 21) %>%
+                group_by(year, month, gridcell) %>%
                 summarize(n = n()) %>%
                 mutate(prop = n / sum(n)) %>%
                 filter(year > 1980)
 
-ogt.prop.ann <- ogt.catch %>%
-                group_by(year, gridcell) %>%
+# calculate proportion of gridcells fished for use in weighted probability later
+pgt.gridcell.probs <- ogt.catch %>%
+                filter(!is.na(gridcell)) %>%
+                filter(gear.type == 7 | gear.type == 21) %>%
+                group_by(gridcell) %>%
+                summarize(n = n()) %>%
+                mutate(prop = n / sum(n))
+
+# obtain gear types other than bottom and pelagic trawl used to catch gss
+ogt <- unique(filter(landedcatch, 
+                          gear.type != 6 & gear.type != 7 & gear.type != 21)$gear.type)
+
+# calculate proportions for rest of the gear.types by gridcell
+other.gt.catch.props <- ogt.catch %>%
+                filter(gear.type %in% ogt) %>%
+                group_by(gear.type, gridcell) %>%
                 summarize(n = n()) %>%
                 mutate(prop = n / sum(n)) %>%
-                filter(year > 1980)
+                filter(!is.na(gridcell))
 
-
-
-
+# calculate gridcell proportions for use in weighted probabilities later
+gridcell.probs <- ogt.catch %>%
+    filter(!is.na(gridcell)) %>%
+    group_by(gridcell) %>%
+    summarize(n = n()) %>%
+    mutate(prop = n / sum(n))
 
 
 
